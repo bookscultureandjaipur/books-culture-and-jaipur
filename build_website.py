@@ -384,7 +384,8 @@ footer p{{font-size:.85rem;line-height:1.6}}
   .hero-stats{{gap:24px}}
   .header-search{{display:none}}
   .detail-grid{{grid-template-columns:1fr}}
-  .event-grid{{grid-template-columns:repeat(2,1fr);gap:10px}}
+  .filter-bar{{position:static}}
+  .event-grid{{grid-template-columns:1fr;gap:12px}}
   .modal-actions{{flex-direction:column}}
   .modal-poster-wrap{{height:220px}}
 }}
