@@ -16,7 +16,7 @@ from pathlib import Path
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-SITE_NAME    = "EventsNear"
+SITE_NAME    = "Books Culture and Jaipur"
 SITE_TAGLINE = "Discover plays, music & cultural events near you"
 OUTPUT_FILE    = "index.html"
 SITE_URL       = "https://bookscultureandjaipur.github.io/books-culture-and-jaipur"
