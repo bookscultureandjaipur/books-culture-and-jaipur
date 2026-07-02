@@ -19,7 +19,7 @@ from pathlib import Path
 SITE_NAME    = "EventsNear"
 SITE_TAGLINE = "Discover plays, music & cultural events near you"
 OUTPUT_FILE    = "index.html"
-SITE_URL       = "https://eventsnear.in"   # update before deploying
+SITE_URL       = "https://bookscultureandjaipur.github.io/books-culture-and-jaipur"
 GENRE_PAGE_MIN = 8   # minimum events needed to generate a city+genre page
 
 JSON_SOURCES = [
