@@ -770,10 +770,18 @@ function openModal(filtI, globalI) {{
   // Actions
   const action  = getBookingAction(ev);
   const actions = [];
-  if (action) actions.push(`<a href="${{action.url}}" target="_blank" class="action-btn ${{action.type}}">${{action.icon}} ${{action.label}}</a>`);
-  if (ev.link && action && action.url !== ev.link) {{
-    const linkLabel = src === 'bms' ? '🔗 View on BMS' : '📸 View Post';
-    actions.push(`<a href="${{ev.link}}" target="_blank" class="action-btn secondary">${{linkLabel}}</a>`);
+  if (ev.form_link) {{
+    actions.push(`<a href="${{ev.form_link}}" target="_blank" class="action-btn primary">📝 Register Now</a>`);
+    if (ev.link && !ev.link.includes('wa.me')) {{
+      const igLabel = ev.link.includes('instagram') ? '📸 View on Instagram' : '🔗 View Post';
+      actions.push(`<a href="${{ev.link}}" target="_blank" class="action-btn secondary">${{igLabel}}</a>`);
+    }}
+  }} else {{
+    if (action) actions.push(`<a href="${{action.url}}" target="_blank" class="action-btn ${{action.type}}">${{action.icon}} ${{action.label}}</a>`);
+    if (ev.link && action && action.url !== ev.link) {{
+      const linkLabel = src === 'bms' ? '🔗 View on BMS' : '📸 View Post';
+      actions.push(`<a href="${{ev.link}}" target="_blank" class="action-btn secondary">${{linkLabel}}</a>`);
+    }}
   }}
   document.getElementById('modalActions').innerHTML = actions.join('');
 

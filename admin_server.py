@@ -96,14 +96,22 @@ BMS_JS = r"""
 
 IG_JS = r"""
 () => {
-    const imgs = Array.from(document.querySelectorAll('img[src]'))
-        .map(i => ({ src: i.src, w: i.naturalWidth || 0, h: i.naturalHeight || 0 }))
-        .filter(i => (i.src.includes('cdninstagram') || i.src.includes('fbcdn')) && i.w > 100);
-    imgs.sort((a, b) => (b.w * b.h) - (a.w * a.h));
-
     const og = s => { const el = document.querySelector(`meta[property="${s}"]`); return el ? el.getAttribute('content') || '' : ''; };
+
+    // og:image is the canonical post image — most reliable
+    let imgUrl = og('og:image');
+
+    // Fallback: largest cdninstagram/fbcdn image on the page
+    if (!imgUrl) {
+        const imgs = Array.from(document.querySelectorAll('img[src]'))
+            .map(i => ({ src: i.src, w: i.naturalWidth || 0, h: i.naturalHeight || 0 }))
+            .filter(i => (i.src.includes('cdninstagram') || i.src.includes('fbcdn')) && i.w > 200);
+        imgs.sort((a, b) => (b.w * b.h) - (a.w * a.h));
+        if (imgs.length) imgUrl = imgs[0].src;
+    }
+
     return {
-        imgUrl:  imgs.length ? imgs[0].src : '',
+        imgUrl:  imgUrl,
         caption: og('og:description'),
         title:   og('og:title').replace(/\s*on Instagram$/,'').trim(),
     };
@@ -478,7 +486,28 @@ header{background:#1A1A2E;color:#fff;padding:0 28px;height:60px;display:flex;ali
 
         <div class="field">
           <label>Time</label>
-          <input type="text" id="fTime" placeholder="e.g. 7:00 PM" oninput="updateCardPreview()">
+          <select id="fTime" onchange="updateCardPreview()">
+            <option value="">— Select time —</option>
+            <option>9:00 AM</option>
+            <option>10:00 AM</option>
+            <option>11:00 AM</option>
+            <option>12:00 PM</option>
+            <option>1:00 PM</option>
+            <option>2:00 PM</option>
+            <option>3:00 PM</option>
+            <option>4:00 PM</option>
+            <option>4:30 PM</option>
+            <option>5:00 PM</option>
+            <option>5:30 PM</option>
+            <option>6:00 PM</option>
+            <option>6:30 PM</option>
+            <option>7:00 PM</option>
+            <option>7:30 PM</option>
+            <option>8:00 PM</option>
+            <option>8:30 PM</option>
+            <option>9:00 PM</option>
+            <option>10:00 PM</option>
+          </select>
         </div>
 
         <div class="field full">
@@ -505,6 +534,11 @@ header{background:#1A1A2E;color:#fff;padding:0 28px;height:60px;display:flex;ali
           <label>WhatsApp Number</label>
           <input type="text" id="fPhone" placeholder="e.g. 9876543210" oninput="onPhoneInput()" maxlength="15">
           <div class="wa-hint" id="waHint"></div>
+        </div>
+
+        <div class="field full">
+          <label>Registration Form Link</label>
+          <input type="url" id="fFormLink" placeholder="https://forms.google.com/... or any registration URL">
         </div>
 
         <div class="field full">
@@ -612,13 +646,14 @@ function fillForm(ev) {
   document.getElementById('fSource').value   = ev._source  || 'custom';
   document.getElementById('fTitle').value    = ev.title    || '';
   document.getElementById('fCity').value     = ev._city || ev.city || '';
-  document.getElementById('fTime').value     = ev.time     || '';
+  document.getElementById('fTime').value     = normalizeTime(ev.time || '');
   document.getElementById('fVenue').value    = ev.venue    || '';
   document.getElementById('fPrice').value    = ev.price    || '';
   document.getElementById('fDuration').value = ev.duration || '';
   document.getElementById('fLanguage').value = ev.language || '';
   document.getElementById('fLink').value     = ev.link     || '';
   document.getElementById('fPhone').value    = ev.phone    || '';
+  document.getElementById('fFormLink').value = ev.form_link || '';
   refreshWaHint();
   document.getElementById('fImage').value    = ev.image    || '';
   document.getElementById('fCaption').value  = ev.caption_full || '';
@@ -632,7 +667,7 @@ function fillForm(ev) {
 
 function clearForm() {
   ['fId','fSource','fTitle','fTime','fVenue','fPrice',
-   'fDuration','fLanguage','fLink','fPhone','fImage','fCaption'].forEach(id => {
+   'fDuration','fLanguage','fLink','fPhone','fFormLink','fImage','fCaption'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('fCity').value = '';
@@ -680,6 +715,7 @@ async function saveEvent() {
     language:     document.getElementById('fLanguage').value.trim(),
     link:         waLink || document.getElementById('fLink').value.trim(),
     phone:        phone,
+    form_link:    document.getElementById('fFormLink').value.trim(),
     image:        document.getElementById('fImage').value.trim(),
     caption_full: document.getElementById('fCaption').value.trim(),
   };
@@ -812,6 +848,34 @@ function setDateFromString(dateStr) {
   document.getElementById('fDateEnd').style.display = ongoing ? 'none' : '';
   document.getElementById('dateSep').style.display  = ongoing ? 'none' : '';
   updateDatePreview();
+}
+
+// ── Time normalizer ────────────────────────────────────────────────────────
+function normalizeTime(raw) {
+  if (!raw) return '';
+  // Already in "H:MM AM/PM" format — try direct match first
+  const sel = document.getElementById('fTime');
+  for (const opt of sel.options) {
+    if (opt.value.toLowerCase() === raw.trim().toLowerCase()) return opt.value;
+  }
+  // Try parsing 24h or variant formats (e.g. "19:00", "7 PM", "7.00 PM")
+  const m = raw.match(/(\d{1,2})[:\.]?(\d{2})?\s*(am|pm)?/i);
+  if (!m) return '';
+  let h = parseInt(m[1]), min = parseInt(m[2] || '0');
+  const meridiem = m[3] ? m[3].toUpperCase() : (h >= 12 ? 'PM' : 'AM');
+  if (!m[3] && h > 12) { h -= 12; }
+  if (h === 12 && meridiem === 'AM') h = 0;
+  if (meridiem === 'PM' && h !== 12) h += 12;
+  // Find closest option
+  for (const opt of sel.options) {
+    const om = opt.value.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (!om) continue;
+    let oh = parseInt(om[1]); const omin = parseInt(om[2]); const omer = om[3].toUpperCase();
+    if (omer === 'PM' && oh !== 12) oh += 12;
+    if (omer === 'AM' && oh === 12) oh = 0;
+    if (oh === h && omin === min) return opt.value;
+  }
+  return '';
 }
 
 // ── WhatsApp helpers ───────────────────────────────────────────────────────
