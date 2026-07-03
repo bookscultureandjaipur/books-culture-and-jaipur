@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Event Events in Mumbai — Books Culture and Jaipur</title>
 <meta name="description" content="Discover event shows, concerts and performances in Mumbai. Updated weekly from BookMyShow.">
-<link rel="canonical" href="https://bookscultureandjaipur.github.io/books-culture-and-jaipur/mumbai-event.html">
+<link rel="canonical" href="https://bookscultureandjaipur.github.io/mumbai-event.html">
 <style>
 /* ── Reset & Base ── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -373,8 +373,15 @@ function getBookingAction(ev) {
   // 5. WhatsApp direct link (admin-set phone number)
   if (ev.link && ev.link.includes('wa.me')) return { url: ev.link, label: 'Chat on WhatsApp', type: 'whatsapp', icon: '💬' };
 
-  // 6. Instagram post
-  if (ev.link) return { url: ev.link, label: 'View on Instagram', type: 'instagram-btn', icon: '📸' };
+  // 6. District.in link
+  if (ev.link && (ev.link.includes('district.in') || ev.link.includes('insider.in')))
+    return { url: ev.link, label: 'Book on District', type: 'primary', icon: '🎟️' };
+
+  // 7. Instagram post
+  if (ev.link && ev.link.includes('instagram')) return { url: ev.link, label: 'View on Instagram', type: 'instagram-btn', icon: '📸' };
+
+  // 8. Generic link
+  if (ev.link) return { url: ev.link, label: 'View Details', type: 'secondary', icon: '🔗' };
 
   return null;
 }

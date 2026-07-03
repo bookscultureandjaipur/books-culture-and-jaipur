@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://bookscultureandjaipur.github.io/books-culture-and-jaipur/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
-  <url><loc>https://bookscultureandjaipur.github.io/books-culture-and-jaipur/bengaluru.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://bookscultureandjaipur.github.io/books-culture-and-jaipur/delhi.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://bookscultureandjaipur.github.io/books-culture-and-jaipur/jaipur.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://bookscultureandjaipur.github.io/books-culture-and-jaipur/mumbai.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://bookscultureandjaipur.github.io/books-culture-and-jaipur/bengaluru-comedy.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://bookscultureandjaipur.github.io/books-culture-and-jaipur/delhi-comedy.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://bookscultureandjaipur.github.io/books-culture-and-jaipur/delhi-drama.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://bookscultureandjaipur.github.io/books-culture-and-jaipur/delhi-event.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://bookscultureandjaipur.github.io/books-culture-and-jaipur/jaipur-musical.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://bookscultureandjaipur.github.io/books-culture-and-jaipur/mumbai-comedy.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://bookscultureandjaipur.github.io/books-culture-and-jaipur/mumbai-drama.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://bookscultureandjaipur.github.io/books-culture-and-jaipur/mumbai-event.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://bookscultureandjaipur.github.io/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://bookscultureandjaipur.github.io/bengaluru.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://bookscultureandjaipur.github.io/delhi.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://bookscultureandjaipur.github.io/jaipur.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://bookscultureandjaipur.github.io/mumbai.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://bookscultureandjaipur.github.io/bengaluru-comedy.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://bookscultureandjaipur.github.io/delhi-comedy.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://bookscultureandjaipur.github.io/delhi-drama.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://bookscultureandjaipur.github.io/delhi-event.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://bookscultureandjaipur.github.io/jaipur-musical.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://bookscultureandjaipur.github.io/mumbai-comedy.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://bookscultureandjaipur.github.io/mumbai-drama.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://bookscultureandjaipur.github.io/mumbai-event.html</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
 </urlset>

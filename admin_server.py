@@ -356,6 +356,132 @@ async def _ig_fetch(url):
         '_source':      'instagram',
     }
 
+DISTRICT_JS = r"""
+() => {
+    const og = s => {
+        const el = document.querySelector(`meta[property="${s}"], meta[name="${s}"]`);
+        return el ? el.getAttribute('content') || '' : '';
+    };
+
+    // Parse JSON-LD for structured event data
+    let jd = null;
+    for (const s of document.querySelectorAll('script[type="application/ld+json"]')) {
+        try {
+            const arr = [].concat(JSON.parse(s.textContent));
+            const ev  = arr.find(x => x && x['@type'] === 'Event');
+            if (ev) { jd = ev; break; }
+        } catch(e) {}
+    }
+
+    let title = og('og:title')
+        .replace(/\s*[-|]\s*(District|Insider|Buy Tickets?|Zomato)[^]*/i, '')
+        .trim();
+    if (!title) { const h = document.querySelector('h1'); if (h) title = h.innerText.trim(); }
+
+    let date = '', time = '', venue = '', price = '', city = '';
+
+    if (jd) {
+        if (jd.startDate) {
+            const dt = new Date(jd.startDate);
+            const D  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            const M  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            date = `${D[dt.getDay()]}, ${dt.getDate()} ${M[dt.getMonth()]} ${dt.getFullYear()}`;
+            const h = dt.getHours(), m = dt.getMinutes();
+            time = `${h%12||12}:${m.toString().padStart(2,'0')} ${h<12?'AM':'PM'}`;
+        }
+        if (jd.location) {
+            const loc = jd.location;
+            venue = loc.name || '';
+            const addr = loc.address || {};
+            city  = (typeof addr === 'string' ? '' : addr.addressLocality) || '';
+            if (!venue && typeof addr === 'string') venue = addr;
+        }
+        if (jd.offers) {
+            const offs   = [].concat(jd.offers);
+            const prices = offs.map(o => parseFloat(o.price)).filter(p => !isNaN(p) && p > 0);
+            if (prices.length) price = String(Math.min(...prices));
+        }
+    }
+
+    return {
+        title,
+        date,
+        time,
+        venue,
+        price,
+        city,
+        image:   og('og:image'),
+        caption: og('og:description'),
+    };
+}
+"""
+
+
+async def _district_fetch(url):
+    from playwright.async_api import async_playwright
+    import base64 as _b64
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(
+            headless=False,
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox"]
+        )
+        ctx  = await browser.new_context(user_agent=USER_AGENT, viewport={"width": 1280, "height": 900})
+        page = await ctx.new_page()
+        await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+        await page.wait_for_timeout(4000)
+        raw = await page.evaluate(DISTRICT_JS)
+
+        # Download image (District CDN is public — fetch from page)
+        img_local = ''
+        if raw.get('image'):
+            try:
+                h  = hashlib.md5(url.encode()).hexdigest()[:8]
+                fn = f"custom_{h}.jpg"
+                img_b64 = await page.evaluate("""async (imgUrl) => {
+                    try {
+                        const r = await fetch(imgUrl);
+                        if (!r.ok) return null;
+                        const blob = await r.blob();
+                        return await new Promise(res => {
+                            const rd = new FileReader();
+                            rd.onloadend = () => res(rd.result.split(',')[1]);
+                            rd.readAsDataURL(blob);
+                        });
+                    } catch(e) { return null; }
+                }""", raw['image'])
+                if img_b64:
+                    (IMG_DIR / fn).write_bytes(_b64.b64decode(img_b64))
+                    img_local = f"images/{fn}"
+                    print(f"  District image saved: {len(_b64.b64decode(img_b64)):,} bytes")
+            except Exception as e:
+                print(f"  District image warning: {e}")
+
+        await browser.close()
+
+    # Infer city from URL if not found in structured data
+    city = raw.get('city', '')
+    if not city:
+        for c in ['delhi', 'mumbai', 'bengaluru', 'bangalore', 'jaipur',
+                  'hyderabad', 'pune', 'chennai', 'kolkata']:
+            if c in url.lower():
+                city = 'Bengaluru' if c == 'bangalore' else c.capitalize()
+                break
+
+    return {
+        'title':        raw.get('title', ''),
+        'date':         raw.get('date', ''),
+        'time':         raw.get('time', ''),
+        'venue':        raw.get('venue', ''),
+        'price':        raw.get('price', ''),
+        'city':         city,
+        'link':         url,
+        'image':        img_local or raw.get('image', ''),
+        'caption_full': raw.get('caption', ''),
+        '_source':      'district',
+    }
+
+
 # ── API routes ────────────────────────────────────────────────────────────────
 
 @app.route('/api/fetch', methods=['POST'])
@@ -368,8 +494,10 @@ def api_fetch():
             data = asyncio.run(_bms_fetch(url))
         elif 'instagram.com' in url:
             data = asyncio.run(_ig_fetch(url))
+        elif 'district.in' in url or 'insider.in' in url:
+            data = asyncio.run(_district_fetch(url))
         else:
-            return jsonify({'error': 'Paste a BookMyShow or Instagram URL'}), 400
+            return jsonify({'error': 'Paste a BookMyShow, Instagram, or District.in URL'}), 400
         return jsonify({'ok': True, 'event': data})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -401,6 +529,58 @@ def api_add():
 def api_delete(eid):
     save_events([e for e in load_events() if e.get('_id') != eid])
     return jsonify({'ok': True})
+
+
+SCRAPE_FILES = [
+    {"file": "bms_events.json",           "source": "bms",       "city": "Delhi"},
+    {"file": "ig_events.json",            "source": "instagram", "city": "Delhi"},
+    {"file": "bms_mumbai_events.json",    "source": "bms",       "city": "Mumbai"},
+    {"file": "ig_mumbai_events.json",     "source": "instagram", "city": "Mumbai"},
+    {"file": "bms_bengaluru_events.json", "source": "bms",       "city": "Bengaluru"},
+    {"file": "bms_jaipur_events.json",    "source": "bms",       "city": "Jaipur"},
+]
+
+@app.route('/api/all-events', methods=['GET'])
+def api_all_events():
+    result = []
+    for sf in SCRAPE_FILES:
+        fp = BASE / sf['file']
+        if not fp.exists():
+            continue
+        for ev in json.loads(fp.read_text(encoding='utf-8')):
+            ev.setdefault('_source', sf['source'])
+            ev.setdefault('_city',   sf['city'])
+            ev['_file'] = sf['file']
+            result.append(ev)
+    return jsonify(result)
+
+
+@app.route('/api/hide-event', methods=['POST'])
+def api_hide_event():
+    link = (request.json or {}).get('link', '').strip().rstrip('/')
+    if not link:
+        return jsonify({'error': 'No link'}), 400
+    excl_file = BASE / 'excluded_links.json'
+    excluded  = json.loads(excl_file.read_text(encoding='utf-8')) if excl_file.exists() else []
+    if link not in excluded:
+        excluded.append(link)
+        excl_file.write_text(json.dumps(sorted(excluded), ensure_ascii=False, indent=2), encoding='utf-8')
+    return jsonify({'ok': True})
+
+
+@app.route('/api/upload-image', methods=['POST'])
+def api_upload_image():
+    f = request.files.get('image')
+    if not f or not f.filename:
+        return jsonify({'error': 'No file provided'}), 400
+    ext = Path(f.filename).suffix.lower() or '.jpg'
+    if ext not in {'.jpg', '.jpeg', '.png', '.gif', '.webp'}:
+        return jsonify({'error': 'Unsupported file type'}), 400
+    data = f.read()
+    h  = hashlib.md5(data).hexdigest()[:8]
+    fn = f"custom_{h}{ext}"
+    (IMG_DIR / fn).write_bytes(data)
+    return jsonify({'ok': True, 'path': f'images/{fn}'})
 
 
 @app.route('/api/rebuild', methods=['POST'])
@@ -523,6 +703,7 @@ header{background:#1A1A2E;color:#fff;padding:0 28px;height:60px;display:flex;ali
 .source-bms{background:#FEE;color:var(--red)}
 .source-instagram{background:#F3EFF9;color:var(--purple)}
 .source-custom{background:#EFF9F3;color:var(--green)}
+.source-district{background:#FFF3E0;color:#E65100}
 .event-actions{display:flex;gap:6px;flex-shrink:0}
 .btn-sm{padding:5px 12px;font-size:.75rem;border-radius:6px;cursor:pointer;border:none;font-family:inherit;font-weight:600;transition:all .15s}
 .btn-delete{background:#FFEBEE;color:#C62828}
@@ -554,6 +735,14 @@ header{background:#1A1A2E;color:#fff;padding:0 28px;height:60px;display:flex;ali
 .pc-badge-wa{background:rgba(37,211,102,.92);color:#fff}
 .wa-hint{margin-top:5px;font-size:.78rem;color:#25D366;font-weight:600;min-height:16px}
 
+/* Scrape filters */
+.scrape-filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.scrape-filters input{flex:1;min-width:180px;padding:9px 13px;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;outline:none;font-family:inherit;transition:border .18s}
+.scrape-filters input:focus{border-color:var(--red)}
+.scrape-filters select{padding:9px 13px;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;outline:none;font-family:inherit;background:#fff;color:var(--text)}
+.btn-hide{background:#FFF3E0;color:#E65100}
+.btn-hide:hover{background:#FFE0B2}
+
 /* Rebuild output */
 .rebuild-output{margin-top:12px;background:#1A1A2E;color:#a8ff78;padding:14px;border-radius:8px;font-family:monospace;font-size:.8rem;white-space:pre-wrap;display:none;max-height:160px;overflow-y:auto}
 
@@ -580,11 +769,11 @@ header{background:#1A1A2E;color:#fff;padding:0 28px;height:60px;display:flex;ali
   <div class="card">
     <div class="card-header">
       <h2>🔗 Add Event from URL</h2>
-      <span class="subtitle">Paste a BookMyShow or Instagram post link</span>
+      <span class="subtitle">Paste a BookMyShow, Instagram, or District.in link</span>
     </div>
     <div class="card-body">
       <div class="fetch-bar">
-        <input type="url" id="fetchUrl" placeholder="https://in.bookmyshow.com/plays/... or https://www.instagram.com/p/..." onkeydown="if(event.key==='Enter')fetchFromUrl()">
+        <input type="url" id="fetchUrl" placeholder="BookMyShow, Instagram, or District.in URL..." onkeydown="if(event.key==='Enter')fetchFromUrl()">
         <button class="btn btn-primary" id="fetchBtn" onclick="fetchFromUrl()">Fetch Details</button>
       </div>
       <div class="fetch-status" id="fetchStatus"></div>
@@ -641,13 +830,26 @@ header{background:#1A1A2E;color:#fff;padding:0 28px;height:60px;display:flex;ali
           <label>Time</label>
           <select id="fTime" onchange="updateCardPreview()">
             <option value="">— Select time —</option>
+            <option>6:00 AM</option>
+            <option>6:30 AM</option>
+            <option>7:00 AM</option>
+            <option>7:30 AM</option>
+            <option>8:00 AM</option>
+            <option>8:30 AM</option>
             <option>9:00 AM</option>
+            <option>9:30 AM</option>
             <option>10:00 AM</option>
+            <option>10:30 AM</option>
             <option>11:00 AM</option>
+            <option>11:30 AM</option>
             <option>12:00 PM</option>
+            <option>12:30 PM</option>
             <option>1:00 PM</option>
+            <option>1:30 PM</option>
             <option>2:00 PM</option>
+            <option>2:30 PM</option>
             <option>3:00 PM</option>
+            <option>3:30 PM</option>
             <option>4:00 PM</option>
             <option>4:30 PM</option>
             <option>5:00 PM</option>
@@ -659,7 +861,10 @@ header{background:#1A1A2E;color:#fff;padding:0 28px;height:60px;display:flex;ali
             <option>8:00 PM</option>
             <option>8:30 PM</option>
             <option>9:00 PM</option>
+            <option>9:30 PM</option>
             <option>10:00 PM</option>
+            <option>10:30 PM</option>
+            <option>11:00 PM</option>
           </select>
         </div>
 
@@ -700,8 +905,12 @@ header{background:#1A1A2E;color:#fff;padding:0 28px;height:60px;display:flex;ali
         </div>
 
         <div class="field full">
-          <label>Image URL (or local path)</label>
-          <input type="text" id="fImage" placeholder="https://... or images/..." oninput="previewImage(this.value);updateCardPreview()">
+          <label>Image URL or Upload</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="fImage" placeholder="https://... or images/..." oninput="previewImage(this.value);updateCardPreview()" style="flex:1">
+            <button type="button" class="btn btn-secondary" id="imgUploadBtn" style="white-space:nowrap;padding:10px 14px;font-size:.83rem;flex-shrink:0" onclick="document.getElementById('imgUploadInput').click()">📁 Upload</button>
+            <input type="file" id="imgUploadInput" accept="image/*" style="display:none" onchange="uploadImage(this)">
+          </div>
           <div class="img-preview-wrap" id="imgPreview">
             <div class="img-placeholder">🖼️<br>Image preview</div>
           </div>
@@ -744,6 +953,32 @@ header{background:#1A1A2E;color:#fff;padding:0 28px;height:60px;display:flex;ali
     </div>
   </div>
 
+  <!-- All scraped events -->
+  <div class="card">
+    <div class="card-header">
+      <h2>🗂️ All Scraped Events</h2>
+      <span class="subtitle" id="scrapedCount">Loading...</span>
+    </div>
+    <div class="card-body">
+      <div class="scrape-filters">
+        <input type="text" id="scrapedSearch" placeholder="Search by title or venue..." oninput="renderScraped()">
+        <select id="scrapedCity" onchange="renderScraped()">
+          <option value="">All Cities</option>
+          <option>Delhi</option>
+          <option>Mumbai</option>
+          <option>Bengaluru</option>
+          <option>Jaipur</option>
+        </select>
+        <select id="scrapedSource" onchange="renderScraped()">
+          <option value="">All Sources</option>
+          <option value="bms">BMS</option>
+          <option value="instagram">Instagram</option>
+        </select>
+      </div>
+      <div id="scrapedList"><div class="empty-list">Loading...</div></div>
+    </div>
+  </div>
+
 </div>
 
 <div class="toast" id="toast"></div>
@@ -751,9 +986,11 @@ header{background:#1A1A2E;color:#fff;padding:0 28px;height:60px;display:flex;ali
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
 let events = [];
+let allScraped = [];
 
 // ── Init ───────────────────────────────────────────────────────────────────
 loadEvents();
+loadScraped();
 
 async function loadEvents() {
   const r = await fetch('/api/events');
@@ -773,6 +1010,8 @@ async function fetchFromUrl() {
   status.className = 'fetch-status loading';
   status.textContent = url.includes('instagram')
     ? '⏳ Opening Edge and fetching Instagram post... (this takes ~15 seconds, Edge will open)'
+    : url.includes('district.in') || url.includes('insider.in')
+    ? '⏳ Opening browser to fetch District.in event...'
     : '⏳ Opening browser to fetch BMS page...';
 
   try {
@@ -930,6 +1169,90 @@ async function deleteEvent(id) {
   await fetch(`/api/events/${id}`, { method:'DELETE' });
   toast('Event deleted', 'success');
   loadEvents();
+}
+
+// ── Scraped events ─────────────────────────────────────────────────────────
+async function loadScraped() {
+  const r = await fetch('/api/all-events');
+  allScraped = await r.json();
+  renderScraped();
+}
+
+function renderScraped() {
+  const q   = (document.getElementById('scrapedSearch').value || '').toLowerCase();
+  const city = document.getElementById('scrapedCity').value;
+  const src  = document.getElementById('scrapedSource').value;
+
+  const filtered = allScraped.filter(ev => {
+    if (q && !((ev.title||'').toLowerCase().includes(q) || (ev.venue||'').toLowerCase().includes(q))) return false;
+    if (city && (ev._city||ev.city||'').toLowerCase() !== city.toLowerCase()) return false;
+    if (src  && (ev._source||'') !== src) return false;
+    return true;
+  });
+
+  document.getElementById('scrapedCount').textContent =
+    filtered.length === allScraped.length
+      ? `${allScraped.length} events`
+      : `${filtered.length} of ${allScraped.length} events`;
+
+  const el = document.getElementById('scrapedList');
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty-list">No events match the filters.</div>';
+    return;
+  }
+
+  const PAGE = 50;
+  const rows = filtered.slice(0, PAGE).map(ev => {
+    const s     = ev._source || 'bms';
+    const thumb = ev.image
+      ? `<img class="event-thumb" src="${ev.image}" onerror="this.style.display='none'">`
+      : `<div class="event-thumb-placeholder">${s==='bms'?'🎭':'📸'}</div>`;
+    const meta  = [ev._city||ev.city, ev.date, ev.venue].filter(Boolean).join(' · ');
+    const evJson = JSON.stringify(ev).replace(/"/g,'&quot;');
+    const lnk    = esc(ev.link||'');
+    return `<div class="event-item">
+      ${thumb}
+      <div class="event-info">
+        <div class="event-title">${esc(ev.title||'Untitled')}</div>
+        <div class="event-meta">
+          <span class="source-badge source-${s}">${s.toUpperCase()}</span>
+          ${meta}
+        </div>
+      </div>
+      <div class="event-actions">
+        <button class="btn-sm btn-secondary" onclick="editScraped(${evJson})">Edit</button>
+        <button class="btn-sm btn-hide" onclick="hideEvent('${lnk}')">Hide</button>
+      </div>
+    </div>`;
+  });
+
+  if (filtered.length > PAGE) {
+    rows.push(`<div class="empty-list" style="padding:12px 0">Showing ${PAGE} of ${filtered.length} — use search/filter to narrow down</div>`);
+  }
+
+  el.innerHTML = `<div class="events-list">${rows.join('')}</div>`;
+}
+
+function editScraped(ev) {
+  fillForm(ev);
+  window.scrollTo({top: 0, behavior: 'smooth'});
+  toast('Event loaded into form — edit and save to customise', 'success');
+}
+
+async function hideEvent(link) {
+  if (!confirm('Hide this event from the website?\n(It will be added to the exclusion list — rebuild to apply)')) return;
+  const r    = await fetch('/api/hide-event', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ link }),
+  });
+  const data = await r.json();
+  if (data.ok) {
+    allScraped = allScraped.filter(ev => (ev.link||'').replace(/\/$/,'') !== link.replace(/\/$/,''));
+    renderScraped();
+    toast('Event hidden — rebuild to apply', 'success');
+  } else {
+    toast('Failed to hide event', 'error');
+  }
 }
 
 // ── Rebuild ────────────────────────────────────────────────────────────────
@@ -1151,6 +1474,35 @@ function updateCardPreview() {
       <div class="pc-genres">${genreTags}</div>
     </div>
   </div>`;
+}
+
+// ── Image upload ───────────────────────────────────────────────────────────
+async function uploadImage(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const btn = document.getElementById('imgUploadBtn');
+  btn.disabled = true;
+  btn.textContent = 'Uploading...';
+  try {
+    const fd = new FormData();
+    fd.append('image', file);
+    const r    = await fetch('/api/upload-image', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (data.ok) {
+      document.getElementById('fImage').value = data.path;
+      previewImage(data.path);
+      updateCardPreview();
+      toast('Image uploaded!', 'success');
+    } else {
+      toast('Upload failed: ' + (data.error || 'Unknown'), 'error');
+    }
+  } catch(e) {
+    toast('Upload error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📁 Upload';
+    input.value = '';
+  }
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────────

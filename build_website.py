@@ -19,7 +19,7 @@ from pathlib import Path
 SITE_NAME    = "Books Culture and Jaipur"
 SITE_TAGLINE = "Discover plays, music & cultural events near you"
 OUTPUT_FILE    = "index.html"
-SITE_URL       = "https://bookscultureandjaipur.github.io/books-culture-and-jaipur"
+SITE_URL       = "https://bookscultureandjaipur.github.io"
 GENRE_PAGE_MIN = 8   # minimum events needed to generate a city+genre page
 
 JSON_SOURCES = [
@@ -119,6 +119,15 @@ def load_all_events():
     if excluded:
         print(f"  Exclusion list: {len(excluded)} links\n")
 
+    # Custom events override scraped events with the same link
+    custom_fp = base / "custom_events.json"
+    custom_links = set()
+    if custom_fp.exists():
+        for ev in json.loads(custom_fp.read_text(encoding="utf-8")):
+            lnk = ev.get("link", "").strip().rstrip("/")
+            if lnk:
+                custom_links.add(lnk)
+
     all_events = []
     for src in JSON_SOURCES:
         fp = base / src["file"]
@@ -131,6 +140,8 @@ def load_all_events():
         sold_out = [e for e in events if is_sold_out(e)]
         events   = [e for e in events if not is_sold_out(e)]
         events   = [e for e in events if e.get("link", "").strip().rstrip("/") not in {u.rstrip("/") for u in excluded}]
+        if src["file"] != "custom_events.json":
+            events = [e for e in events if e.get("link", "").strip().rstrip("/") not in custom_links]
         all_events.extend(events)
         skipped = f"  ({len(sold_out)} sold out skipped)" if sold_out else ""
         print(f"  Loaded {len(events):>3} events from {src['file']}{skipped}")
@@ -579,8 +590,15 @@ function getBookingAction(ev) {{
   // 5. WhatsApp direct link (admin-set phone number)
   if (ev.link && ev.link.includes('wa.me')) return {{ url: ev.link, label: 'Chat on WhatsApp', type: 'whatsapp', icon: '💬' }};
 
-  // 6. Instagram post
-  if (ev.link) return {{ url: ev.link, label: 'View on Instagram', type: 'instagram-btn', icon: '📸' }};
+  // 6. District.in link
+  if (ev.link && (ev.link.includes('district.in') || ev.link.includes('insider.in')))
+    return {{ url: ev.link, label: 'Book on District', type: 'primary', icon: '🎟️' }};
+
+  // 7. Instagram post
+  if (ev.link && ev.link.includes('instagram')) return {{ url: ev.link, label: 'View on Instagram', type: 'instagram-btn', icon: '📸' }};
+
+  // 8. Generic link
+  if (ev.link) return {{ url: ev.link, label: 'View Details', type: 'secondary', icon: '🔗' }};
 
   return null;
 }}
