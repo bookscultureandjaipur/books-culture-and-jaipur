@@ -12,7 +12,87 @@ Usage:
 import json
 import re
 import argparse
+from datetime import date
 from pathlib import Path
+
+
+# ── JSON-LD helpers ───────────────────────────────────────────────────────────
+
+_MONTHS_MAP = {'jan':1,'feb':2,'mar':3,'apr':4,'may':5,'jun':6,
+               'jul':7,'aug':8,'sep':9,'oct':10,'nov':11,'dec':12}
+
+def _parse_iso_datetime(date_str, time_str=''):
+    """'Sat, 4 Jul 2026' + '6:30 PM'  →  '2026-07-04T18:30'"""
+    s = re.sub(r'\s*onwards.*', '', date_str, flags=re.I)
+    s = re.split(r'\s*[-–]\s*(?=[A-Z])', s)[0].strip()
+    m = re.search(r'(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s*(\d{4})?', s, re.I)
+    if not m:
+        return ''
+    day   = int(m.group(1))
+    month = _MONTHS_MAP[m.group(2).lower()[:3]]
+    year  = int(m.group(3)) if m.group(3) else 2026
+    time_part = ''
+    if time_str:
+        tm = re.match(r'(\d{1,2}):(\d{2})\s*(AM|PM)', time_str.strip(), re.I)
+        if tm:
+            h, mn, mer = int(tm.group(1)), int(tm.group(2)), tm.group(3).upper()
+            if mer == 'PM' and h != 12: h += 12
+            if mer == 'AM' and h == 12: h = 0
+            time_part = f'T{h:02d}:{mn:02d}'
+    return f'{year}-{month:02d}-{day:02d}{time_part}'
+
+
+def generate_event_jsonld(events, site_url, max_events=40):
+    """Return a <script type="application/ld+json"> tag with Event schema for the page."""
+    items = []
+    for ev in events[:max_events]:
+        dt = _parse_iso_datetime(ev.get('date', ''), ev.get('time', ''))
+        if not dt:
+            continue
+        obj = {
+            '@type': 'Event',
+            'name': ev.get('title', ''),
+            'startDate': dt,
+            'eventStatus': 'https://schema.org/EventScheduled',
+            'eventAttendanceMode': 'https://schema.org/OfflineEventAttendanceMode',
+        }
+        if ev.get('venue'):
+            obj['location'] = {
+                '@type': 'Place',
+                'name': ev['venue'],
+                'address': {
+                    '@type': 'PostalAddress',
+                    'addressLocality': ev.get('_city') or ev.get('city', ''),
+                    'addressCountry': 'IN',
+                },
+            }
+        price_raw = str(ev.get('price', '')).strip()
+        link = ev.get('link', '')
+        if price_raw and price_raw.lower() != 'free':
+            digits = re.sub(r'[^\d]', '', price_raw)
+            if digits:
+                offer = {'@type': 'Offer', 'price': digits,
+                         'priceCurrency': 'INR',
+                         'availability': 'https://schema.org/InStock'}
+                if link:
+                    offer['url'] = link
+                obj['offers'] = offer
+        elif price_raw.lower() == 'free':
+            obj['offers'] = {'@type': 'Offer', 'price': '0',
+                             'priceCurrency': 'INR',
+                             'availability': 'https://schema.org/InStock'}
+        img = ev.get('image', '')
+        if img:
+            obj['image'] = img if img.startswith('http') else f'{site_url}/{img}'
+        if link:
+            obj['url'] = link
+        items.append(obj)
+    if not items:
+        return ''
+    schema = {'@context': 'https://schema.org', '@graph': items}
+    return (f'<script type="application/ld+json">'
+            f'{json.dumps(schema, ensure_ascii=False, separators=(",",":"))}'
+            f'</script>')
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -217,6 +297,8 @@ def build_html(events, site_name, tagline, city_filter=None, genre_filter=None, 
         f'{CATEGORY_ICONS.get(g.lower(), "✨")} {g}</button>'
         for g in all_genres
     )
+
+    jsonld_tag = generate_event_jsonld(events, SITE_URL)
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -1012,6 +1094,7 @@ if (GENRE_PAGE && !state.genres.size) {{
 }}
 render();
 </script>
+{jsonld_tag}
 </body>
 </html>"""
 
@@ -1069,15 +1152,16 @@ def main():
             genre_page_files.append(fname)
 
     # sitemap.xml
+    today_iso = date.today().isoformat()
     sitemap_lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-        f'  <url><loc>{SITE_URL}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>',
+        f'  <url><loc>{SITE_URL}/</loc><lastmod>{today_iso}</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>',
     ] + [
-        f'  <url><loc>{SITE_URL}/{city_filename(c)}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>'
+        f'  <url><loc>{SITE_URL}/{city_filename(c)}</loc><lastmod>{today_iso}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>'
         for c in all_cities
     ] + [
-        f'  <url><loc>{SITE_URL}/{f}</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>'
+        f'  <url><loc>{SITE_URL}/{f}</loc><lastmod>{today_iso}</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>'
         for f in genre_page_files
     ] + ['</urlset>']
     total_urls = 1 + len(all_cities) + len(genre_page_files)
