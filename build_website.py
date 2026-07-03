@@ -397,15 +397,11 @@ footer p{{font-size:.85rem;line-height:1.6}}
 <header>
   <div class="header-inner">
     <div class="logo">
-      <span class="logo-dot"></span>
       {site_name}
     </div>
     <div class="header-search">
       <span class="search-icon">🔍</span>
       <input type="text" id="headerSearch" placeholder="Search events, venues..." oninput="onSearch(this.value)">
-    </div>
-    <div class="header-actions">
-      <button class="btn-outline" onclick="alert('Coming soon!')">List Your Event</button>
     </div>
   </div>
 </header>
